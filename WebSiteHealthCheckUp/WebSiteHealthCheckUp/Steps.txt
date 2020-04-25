@@ -1,0 +1,192 @@
+﻿Step 1:
+Create Service Worker Solution. Make a solution name as WebSiteHealthCheckUp
+    Add New Project -> Select Service Worker Solution Template.
+
+Step 2:
+In this example we have to check wether google site is working or not by using worker service.
+We are going to maintain log for the same. 
+
+First we will get status code from google site by using HttpClient class by calling GetAsync method where we will get status code of google site.
+
+Add the following code on Worker Class.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+namespace WebSiteHealthCheckUp
+{
+    public class Worker : BackgroundService
+    {
+        private readonly ILogger<Worker> _logger;
+        private HttpClient httpClient = null;
+
+        public Worker(ILogger<Worker> logger)
+        {
+            _logger = logger;
+        }
+
+        public override Task StartAsync(CancellationToken cancellationToken)
+        {
+            httpClient = new HttpClient();
+            return base.StartAsync(cancellationToken);
+        }
+
+        public override Task StopAsync(CancellationToken cancellationToken)
+        {
+            httpClient.Dispose();
+            return base.StopAsync(cancellationToken);
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var result = await httpClient.GetAsync("https://www.google.com");
+
+                if (result.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("The website is up. Status Code {StatusCode}", result.StatusCode);
+                }
+                else
+                {
+                    _logger.LogError("The Website is down. Status Code {StatusCode}",result.StatusCode);
+                }
+
+                await Task.Delay(1000, stoppingToken);
+            }
+        }
+    }
+}
+
+Step 3:
+Write logger content in text file by using following nuget packages.
+Serilog.AspNetCore
+Serilog.Sinks.File
+
+Step 4:
+Make Serilog configuration setting on Program.Cs file.
+
+On Main method add the following code.
+
+public static void Main(string[] args)
+        {
+            Log.Logger = new LoggerConfiguration()
+                              .MinimumLevel.Debug()
+                              .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                              .Enrich.FromLogContext()
+                              .WriteTo.File(@"C:\temp\WorkerServiceDemo\LogFile.txt")
+                              .CreateLogger();
+
+            try
+            {
+                Log.Information("Starting up the service");
+
+                CreateHostBuilder(args).Build().Run();
+
+                return;
+            }
+            catch(Exception ex)
+            {
+                Log.Fatal(ex, "There was a problem to start the service.");
+                return;
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
+
+        }
+
+Step 5:
+Use Serilog Service.
+
+On CreateHostBuilder method use Serilog method by passing UseSerilog Method.
+
+public static IHostBuilder CreateHostBuilder(string[] args) =>
+            Host.CreateDefaultBuilder(args)
+                .ConfigureServices((hostContext, services) =>
+                {
+                    services.AddHostedService<Worker>();
+                })
+                .UseSerilog();
+
+Step 6:
+Run the service and check log file are created or not.
+
+
+Step 7:
+Use created service as Window Service. (it means, our service will consume through window service)
+Add the following nuget package.
+Microsoft.Extensions.Hosting.WindowsServices
+
+Step 8:
+Use window service on CreateHostBuilder method, like this
+
+public static IHostBuilder CreateHostBuilder(string[] args) =>
+            Host.CreateDefaultBuilder(args)
+                .UseWindowsService()
+                .ConfigureServices((hostContext, services) =>
+                {
+                    services.AddHostedService<Worker>();
+                })
+                .UseSerilog();
+
+Step 9:
+Build your Solution.
+
+Step 10:
+Publish your service on Window Service Section.
+
+10.1  Select you Solution-> Right click on Solution -> Select a Publish option from the menu context.
+
+10.2  Publish dialog box will open -> Select Folder -> Choose you publish Path.
+
+10.3  Click on publish Folder
+
+After publish button click you will get all assemblies  releated to your service including WebSiteHealthCheckUp.exe.
+
+Step 11:
+Install WebSiteHealthCheckUp.exe as Window Service.
+
+11.1 Run Command Prompt(cmd) or Window Powershell(powershell) Prompt by using run as administrator (Note: I am here using powershell)
+
+11.2 Now install our service using following command.
+       PS C:\windows\system32> sc.exe create WebsiteStatusProgram binpath=C:\Users\KISHOR\Desktop\Sol_WorkerService_Demo\Publish\WebSiteHealthCheckUp.exe start=auto
+       
+       Note : WebsiteStatusProgram is your service name where you can find on Service Window.
+
+11.3 So you will get following response from console.
+       [SC] CreateService SUCCESS
+
+11.4 Your service installed on Services Window. for verification, Open Run Window(Window + R Key) and add following command and press enter.
+       services.msc
+
+11.5 Services window will open and find following our service from list of services.
+       WebsiteStatusProgram
+
+       Note : After the service install, your machine must be restart to run the service automatically. 
+       If you dont want to restart the machine then you have to manually start the service from Services Window by right click on service and click Start from menu context.
+
+11.6 If you want to delete your service from services window, then first stop the service from window service by right click on service and click Stop from menu context.
+       add the following command on command prompt or powershell command prompt(it must be run as administrator)
+       sc.exe delete WebsiteStatusProgram
+
+       you will get following respose
+       [SC] DeleteService SUCCESS
+
+11.7 Click on refresh button on Services Window and your service deleted.
+
+In .net core if you want to create a window service then you have to select Worker service as solution.
+
+
+
+
+
+
+
